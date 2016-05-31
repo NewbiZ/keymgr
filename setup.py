@@ -1,8 +1,10 @@
 import setuptools
 
+from keymgr import __version__
+
 setuptools.setup(
     name='keymgr',
-    version='0.1',
+    version=__version__,
     description='SmartCard manager',
     author='Aurelien Vallee',
     author_email='vallee.aurelien@gmail.com',

@@ -1,0 +1,2 @@
+def status():
+    print 'status'
