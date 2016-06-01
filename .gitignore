@@ -5,4 +5,4 @@ dist/
 *.py[cod]
 __pycache__/
 *~
-
+*.swp
