@@ -1,2 +1,5 @@
+import pexpect
+
+
 def status():
-    print 'status'
+    print pexpect.run('gpg --card-status')
