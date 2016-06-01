@@ -71,12 +71,65 @@ def generate_subkey_encrypt(temporary_keyring, passphrase, keyid):
     child.expect(pexpect.EOF)
 
 
-def generate_subkey_sign():
+def generate_subkey_sign(temporary_keyring, passphrase, keyid, pin, admin_pin):
     LOGGER.info('Generating subkey: sign')
 
+    child = pexpect.spawn('gpg', ['--passphrase', passphrase, '--homedir',
+                                  temporary_keyring, '--edit-key', keyid])
 
-def generate_subkey_auth():
+    child.expect('gpg> ')
+    child.sendline('addcardkey')
+
+    child.expect('Your selection\? ')
+    child.sendline('1')
+
+    child.expect('What keysize do you want for the Signature key\? \(2048\) ')
+    child.sendline('2048')
+
+    child.expect('Key is valid for\? \(0\) ')
+    child.sendline('1y')
+
+    child.expect('Is this correct\? \(y/N\) ')
+    child.sendline('y')
+
+    child.expect('Really create\? \(y/N\) ')
+    child.sendline('y')
+
+    child.expect('gpg> ')
+    child.sendline('save')
+
+    child.expect(pexpect.EOF)
+
+
+def generate_subkey_auth(temporary_keyring, passphrase, keyid, pin, admin_pin):
     LOGGER.info('Generating subkey: auth')
+
+    child = pexpect.spawn('gpg', ['--passphrase', passphrase, '--homedir',
+                                  temporary_keyring, '--edit-key', keyid])
+
+    child.expect('gpg> ')
+    child.sendline('addcardkey')
+
+    child.expect('Your selection\? ')
+    child.sendline('3')
+
+    child.expect(
+        'What keysize do you want for the Authentication key\? \(2048\) ')
+    child.sendline('2048')
+
+    child.expect('Key is valid for\? \(0\) ')
+    child.sendline('1y')
+
+    child.expect('Is this correct\? \(y/N\) ')
+    child.sendline('y')
+
+    child.expect('Really create\? \(y/N\) ')
+    child.sendline('y')
+
+    child.expect('gpg> ')
+    child.sendline('save')
+
+    child.expect(pexpect.EOF)
 
 
 def get_masterkey_id(tmp_keyring):
@@ -111,9 +164,11 @@ def backup_masterkey(tmp_keyring, offline_directory, keyid, username):
                            keyid])
 
 
-def store_smartcard_metainformation(firstname, lastname, username, admin_pin):
+def store_smartcard_metainformation(firstname, lastname, username, passphrase,
+                                    pin, admin_pin):
     LOGGER.info('Storing meta information on the smart card')
 
+    # Set smartcard meta information
     child = pexpect.spawn('gpg', ['--card-edit', '--passphrase', admin_pin])
 
     child.expect('gpg/card> ')
@@ -149,6 +204,71 @@ def store_smartcard_metainformation(firstname, lastname, username, admin_pin):
     child.expect('gpg/card> ')
     child.sendline('quit')
 
+    # Set smartcard pin as passphrase
+    child = pexpect.spawn('gpg', ['--card-edit'])
+
+    child.expect('gpg/card> ')
+    child.sendline('admin')
+
+    child.expect('gpg/card> ')
+    child.sendline('passwd')
+
+    child.expect('Your selection\? ')
+    child.sendline('1')
+
+    child.expect('Enter PIN: ')
+    child.sendline(pin)
+
+    child.expect('Enter New PIN: ')
+    child.sendline(passphrase)
+
+    child.expect('Repeat this PIN: ')
+    child.sendline(passphrase)
+
+    child.expect('Your selection\? ')
+    child.sendline('3')
+
+    child.expect('Enter Admin PIN: ')
+    child.sendline(admin_pin)
+
+    child.expect('Enter New Admin PIN: ')
+    child.sendline(passphrase)
+
+    child.expect('Repeat this PIN: ')
+    child.sendline(passphrase)
+
+    child.expect('Your selection\? ')
+    child.sendline('q')
+
+    child.expect('gpg/card> ')
+    child.sendline('quit')
+
+    child.expect(pexpect.EOF)
+
+
+def export_encrypt_subkey_to_card(temporary_keyring, keyid, passphrase):
+    LOGGER.info('Exporting encryption subkey on smartcard')
+
+    child = pexpect.spawn('gpg', ['--passphrase', passphrase, '--homedir',
+                                  temporary_keyring, '--edit-key', keyid])
+    child.logfile = sys.stdout
+
+    child.expect('gpg> ')
+    child.sendline('toggle')
+
+    child.expect('gpg> ')
+    child.sendline('key 1')
+
+    child.expect('gpg> ')
+    child.sendline('keytocard')
+
+    child.expect('Your selection\? ')
+    child.sendline('2')
+
+    child.expect('gpg> ')
+    child.sendline('save')
+
+    child.interact()
     child.expect(pexpect.EOF)
 
 
@@ -172,7 +292,7 @@ def bootstrap(offline_directory, firstname=None, lastname=None, username=None,
         email = raw_input('Email: ')
     realname = '%s %s' % (firstname, lastname)
     # TODO: choose proper default passphrase/pins here
-    passphrase = '888 for the win!'
+    passphrase = 'Debug passphrase!'
     admin_pin = '12345678'
     pin = '123456'
 
@@ -191,4 +311,13 @@ def bootstrap(offline_directory, firstname=None, lastname=None, username=None,
 
         # Store meta information on the smart card
         store_smartcard_metainformation(firstname, lastname, username,
-                                        admin_pin)
+                                        passphrase, pin, admin_pin)
+
+        # Generate a new authentication subkey
+        generate_subkey_auth(tmp_keyring, passphrase, keyid, pin, admin_pin)
+
+        # Generate a new signing subkey
+        generate_subkey_sign(tmp_keyring, passphrase, keyid, pin, admin_pin)
+
+        # Import encryption subkey to the card
+        export_encrypt_subkey_to_card(tmp_keyring, keyid, passphrase)
